@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Owner Applications Desk</title>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --mc-gold: #FFAA00; --mc-yellow: #FFFF55; --mc-green: #55FF55;
+      --mc-red: #FF5555; --mc-aqua: #55FFFF; --mc-gray: #AAAAAA;
+      --mc-dark-gray: #555555; --mc-white: #FFFFFF; --mc-gui-bg: #212121;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #141414; color: var(--mc-white); font-family: 'VT323', monospace; font-size: 1.35rem; padding: 30px 15px; }
+    .container { max-width: 950px; margin: 0 auto; }
+    .mc-frame {
+      background: var(--mc-gui-bg); border: 4px solid #000;
+      box-shadow: inset 4px 4px 0px #3d3d3d, inset -4px -4px 0px #111; padding: 25px; margin-bottom: 25px;
+    }
+    h1, h2, h3 { font-family: 'Press Start 2P', monospace; text-shadow: 2px 2px #000; }
+    h1 { font-size: 1.3rem; color: var(--mc-yellow); margin-bottom: 12px; }
+    h2 { font-size: 0.85rem; color: var(--mc-gold); margin: 15px 0 8px 0; }
+    .btn {
+      background: #737373; border: 3px solid; border-color: #dbdbdb #373737 #373737 #dbdbdb;
+      color: #fff; padding: 8px 12px; font-family: 'Press Start 2P', monospace; font-size: 0.65rem; cursor: pointer;
+    }
+    .btn-green { background: #2e7d32; border-color: #66bb6a #1b5e20 #1b5e20 #66bb6a; }
+    .btn-red { background: #b71c1c; border-color: #ef5350 #7f0000 #7f0000 #ef5350; }
+    input, select, textarea {
+      background: #000; border: 2px solid #555; color: #fff; padding: 8px; font-family: inherit; font-size: 1.2rem;
+    }
+    .card { background: #111; border: 2px solid #000; padding: 15px; margin-bottom: 15px; }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    
+    <!-- LOGIN VIEW -->
+    <div id="loginView" class="mc-frame">
+      <h1>// OWNER APPS LOGIN</h1>
+      <input type="password" id="passInput" placeholder="Owner Password" />
+      <button class="btn" onclick="login()">ENTER</button>
+      <p style="color:#777; margin-top:10px;">Default password: <strong>admin123</strong></p>
+    </div>
+
+    <!-- OWNER DASHBOARD -->
+    <div id="dashView" class="hidden">
+      
+      <div class="mc-frame">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <h1>// APPLICANT INBOX</h1>
+          <div>
+            <a href="index.html" class="btn" style="text-decoration:none;">APPLY FORM</a>
+            <button class="btn btn-red" onclick="logout()">LOGOUT</button>
+          </div>
+        </div>
+
+        <!-- Password Change -->
+        <div style="margin-top:15px; border-top:1px dashed #444; padding-top:10px;">
+          <h2>[+] CHANGE OWNER PASSWORD</h2>
+          <input type="password" id="newPass" placeholder="New Password" />
+          <button class="btn btn-green" onclick="changePass()">SAVE PASSWORD</button>
+        </div>
+      </div>
+
+      <div class="mc-frame">
+        <h1>// SUBMITTED APPLICATIONS</h1>
+        <div id="appList">Loading applications...</div>
+      </div>
+
+    </div>
+
+  </div>
+
+  <script>
+    async function checkAuth() {
+      const res = await fetch('/api/admin/session');
+      const data = await res.json();
+      if (data.isOwner) {
+        document.getElementById('loginView').classList.add('hidden');
+        document.getElementById('dashView').classList.remove('hidden');
+        loadApps();
+      }
+    }
+
+    async function login() {
+      const password = document.getElementById('passInput').value;
+      const res = await fetch('/api/admin/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password })
+      });
+      const data = await res.json();
+      if (data.success) {
+        location.reload();
+      } else {
+        alert(data.error);
+      }
+    }
+
+    async function logout() {
+      await fetch('/api/admin/logout', { method: 'POST' });
+      location.reload();
+    }
+
+    async function changePass() {
+      const pass = document.getElementById('newPass').value;
+      if (!pass) return alert('Enter password');
+      const res = await fetch('/api/admin/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ newPassword: pass })
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert('Password changed successfully');
+        document.getElementById('newPass').value = '';
+      } else {
+        alert(data.error);
+      }
+    }
+
+    async function loadApps() {
+      const res = await fetch('/api/admin/applications');
+      const apps = await res.json();
+      const list = document.getElementById('appList');
+
+      if (!apps.length) {
+        list.innerHTML = '<p style="color:#777;">No applications submitted yet.</p>';
+        return;
+      }
+
+      list.innerHTML = apps.map(a => `
+        <div class="card">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span>[${a.ticket_code}] <strong>${a.ign}</strong> (${a.discord})</span>
+            <span style="color:var(--mc-yellow); font-family:'Press Start 2P', monospace; font-size:0.65rem;">${a.status}</span>
+          </div>
+          <div style="color:var(--mc-aqua); margin: 6px 0;">Role: ${a.role}</div>
+          <div style="font-size:1.15rem; color:#ccc;">Exp: ${a.experience}</div>
+          <div style="font-size:1.15rem; color:#aaa; margin-top:4px;">Why: ${a.reason}</div>
+          
+          <div style="margin-top:12px; display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+            <select id="status_${a.ticket_code}">
+              <option value="PENDING" ${a.status === 'PENDING' ? 'selected' : ''}>PENDING</option>
+              <option value="UNDER_REVIEW" ${a.status === 'UNDER_REVIEW' ? 'selected' : ''}>UNDER REVIEW</option>
+              <option value="ACCEPTED" ${a.status === 'ACCEPTED' ? 'selected' : ''}>ACCEPTED</option>
+              <option value="DENIED" ${a.status === 'DENIED' ? 'selected' : ''}>DENIED</option>
+              <option value="CLOSED" ${a.status === 'CLOSED' ? 'selected' : ''}>CLOSED</option>
+            </select>
+            <button class="btn btn-green" onclick="updateStatus('${a.ticket_code}')">UPDATE STATUS</button>
+            <a href="ticket.html?code=${a.ticket_code}" class="btn" style="text-decoration:none;">OPEN CHAT THREAD</a>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    async function updateStatus(code) {
+      const status = document.getElementById(`status_${code}`).value;
+      await fetch('/api/admin/set-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ticket_code: code, status })
+      });
+      loadApps();
+    }
+
+    checkAuth();
+  </script>
+</body>
+</html>
