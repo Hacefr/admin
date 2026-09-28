@@ -7,18 +7,21 @@ const crypto = require('crypto');
 const app = express();
 const db = new sqlite3.Database('./applications.db');
 
+// Secure password pulled directly from Render's private Environment Variables
+const OWNER_PASS = process.env.OWNER_PASSWORD || 'EmergencySecureFallbackKey987!';
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static('public'));
 
 app.use(session({
-  secret: 'mc-apply-secret-key-1234',
+  secret: 'mc-apply-secret-vault-key',
   resave: false,
   saveUninitialized: false,
   cookie: { maxAge: 24 * 60 * 60 * 1000 }
 }));
 
-// Initialize Database
+// Initialize Database & Enforce Master Password
 db.serialize(() => {
   db.run(`CREATE TABLE IF NOT EXISTS admin (
     id INTEGER PRIMARY KEY,
@@ -45,11 +48,13 @@ db.serialize(() => {
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )`);
 
-  // Default Owner Password: admin123
+  // Automatically enforce your private password on startup/restarts
+  const hashed = bcrypt.hashSync(OWNER_PASS, 10);
   db.get(`SELECT * FROM admin WHERE id = 1`, (err, row) => {
     if (!row) {
-      const hashed = bcrypt.hashSync('admin123', 10);
       db.run(`INSERT INTO admin (id, password) VALUES (1, ?)`, [hashed]);
+    } else {
+      db.run(`UPDATE admin SET password = ? WHERE id = 1`, [hashed]);
     }
   });
 });
@@ -63,8 +68,6 @@ function requireOwner(req, res, next) {
 }
 
 // --- APPLICANT API ---
-
-// 1. Submit Application
 app.post('/api/apply', (req, res) => {
   const { ign, discord, role, experience, reason } = req.body;
   if (!ign || !discord || !role || !experience || !reason) {
@@ -83,7 +86,6 @@ app.post('/api/apply', (req, res) => {
   );
 });
 
-// 2. View Single Ticket (Applicant or Owner)
 app.get('/api/ticket/:code', (req, res) => {
   const code = req.params.code.toUpperCase();
   db.get(`SELECT * FROM applications WHERE ticket_code = ?`, [code], (err, appData) => {
@@ -95,14 +97,12 @@ app.get('/api/ticket/:code', (req, res) => {
   });
 });
 
-// 3. Post Message in Follow-Up Thread
 app.post('/api/ticket/:code/message', (req, res) => {
   const code = req.params.code.toUpperCase();
   const { message, sender } = req.body;
 
   if (!message || !message.trim()) return res.status(400).json({ error: 'Message empty' });
 
-  // Validate sender
   let verifiedSender = 'APPLICANT';
   if (req.session.isOwner) {
     verifiedSender = 'OWNER';
@@ -128,7 +128,6 @@ app.post('/api/ticket/:code/message', (req, res) => {
 });
 
 // --- OWNER AUTH & API ---
-
 app.post('/api/admin/login', (req, res) => {
   const { password } = req.body;
   db.get(`SELECT password FROM admin WHERE id = 1`, (err, row) => {
