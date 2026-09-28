@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Application Follow-Up</title>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --mc-gold: #FFAA00; --mc-yellow: #FFFF55; --mc-green: #55FF55;
+      --mc-red: #FF5555; --mc-aqua: #55FFFF; --mc-gray: #AAAAAA;
+      --mc-dark-gray: #555555; --mc-white: #FFFFFF; --mc-gui-bg: #212121;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #141414; color: var(--mc-white); font-family: 'VT323', monospace; font-size: 1.35rem; padding: 30px 15px; }
+    .container { max-width: 800px; margin: 0 auto; }
+    .mc-frame {
+      background: var(--mc-gui-bg); border: 4px solid #000;
+      box-shadow: inset 4px 4px 0px #3d3d3d, inset -4px -4px 0px #111; padding: 25px; margin-bottom: 20px;
+    }
+    h1, h2 { font-family: 'Press Start 2P', monospace; text-shadow: 2px 2px #000; }
+    h1 { font-size: 1.2rem; color: var(--mc-yellow); margin-bottom: 10px; }
+    h2 { font-size: 0.85rem; color: var(--mc-gold); margin: 15px 0 8px 0; }
+    .tag { font-family: 'Press Start 2P', monospace; font-size: 0.7rem; padding: 4px 8px; display: inline-block; }
+    .tag-PENDING { background: #f59e0b; color: #000; }
+    .tag-UNDER_REVIEW { background: #3b82f6; color: #fff; }
+    .tag-ACCEPTED { background: #10b981; color: #000; }
+    .tag-DENIED, .tag-CLOSED { background: #ef4444; color: #fff; }
+    .thread { background: #111; border: 2px solid #000; padding: 15px; max-height: 350px; overflow-y: auto; margin-bottom: 12px; }
+    .msg { padding: 8px; margin-bottom: 8px; border-left: 3px solid #555; background: #181818; }
+    .msg-OWNER { border-left-color: var(--mc-gold); }
+    .msg-APPLICANT { border-left-color: var(--mc-aqua); }
+    .btn {
+      background: #737373; border: 3px solid; border-color: #dbdbdb #373737 #373737 #dbdbdb;
+      color: #fff; padding: 8px 12px; font-family: 'Press Start 2P', monospace; font-size: 0.7rem; cursor: pointer;
+    }
+    textarea { width: 100%; background: #000; border: 2px solid #555; color: #fff; padding: 8px; font-family: inherit; font-size: 1.2rem; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="mc-frame">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <a href="index.html" style="color:var(--mc-aqua); text-decoration:none;">&lt;&lt; BACK TO APPLY</a>
+        <span id="statusTag" class="tag">LOADING...</span>
+      </div>
+
+      <h1 id="ticketTitle" style="margin-top:15px;">TICKET: LOADING...</h1>
+      <p style="color:var(--mc-gray);">Save this URL or code to track your decision and respond to follow-ups.</p>
+
+      <h2>// APPLICATION SUMMARY</h2>
+      <div id="detailsBox" style="background:#111; padding:12px; border:1px solid #333; font-size:1.2rem;"></div>
+
+      <h2>// OWNER FOLLOW-UP THREAD</h2>
+      <div id="thread" class="thread">No messages yet.</div>
+
+      <div id="replyArea">
+        <textarea id="replyText" rows="3" placeholder="Type your response to the server owner..."></textarea>
+        <button class="btn" style="background:#2e7d32; border-color:#66bb6a #1b5e20 #1b5e20 #66bb6a; margin-top:8px;" onclick="sendReply()">SEND FOLLOW-UP</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const urlParams = new URLSearchParams(window.location.search);
+    const code = urlParams.get('code');
+
+    async function loadTicket() {
+      if (!code) return alert('No ticket code specified');
+      const res = await fetch(`/api/ticket/${code}`);
+      if (!res.ok) return alert('Ticket not found');
+      const data = await res.json();
+
+      document.getElementById('ticketTitle').textContent = `TICKET: ${data.application.ticket_code}`;
+      const tag = document.getElementById('statusTag');
+      tag.textContent = `[ STATUS: ${data.application.status} ]`;
+      tag.className = `tag tag-${data.application.status}`;
+
+      document.getElementById('detailsBox').innerHTML = `
+        <div>IGN: <strong>${data.application.ign}</strong> | Discord: <strong>${data.application.discord}</strong></div>
+        <div>Role: <span style="color:var(--mc-gold);">${data.application.role}</span></div>
+        <div style="margin-top:6px; color:#bbb;">Experience: ${data.application.experience}</div>
+      `;
+
+      const thread = document.getElementById('thread');
+      if (data.messages.length) {
+        thread.innerHTML = data.messages.map(m => `
+          <div class="msg msg-${m.sender}">
+            <strong style="color:${m.sender === 'OWNER' ? 'var(--mc-gold)' : 'var(--mc-aqua)'}">[${m.sender}]</strong>
+            <small style="color:#666;">${m.created_at}</small>
+            <div style="margin-top:4px;">${m.message}</div>
+          </div>
+        `).join('');
+        thread.scrollTop = thread.scrollHeight;
+      } else {
+        thread.innerHTML = '<p style="color:#666;">No follow-up inquiries yet. Check back soon.</p>';
+      }
+
+      if (data.application.status === 'CLOSED' || data.application.status === 'DENIED') {
+        document.getElementById('replyArea').innerHTML = '<p style="color:var(--mc-red);">[!] This ticket thread is closed.</p>';
+      }
+    }
+
+    async function sendReply() {
+      const msg = document.getElementById('replyText').value.trim();
+      if (!msg) return;
+      const res = await fetch(`/api/ticket/${code}/message`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: msg, sender: 'APPLICANT' })
+      });
+      if (res.ok) {
+        document.getElementById('replyText').value = '';
+        loadTicket();
+      } else {
+        alert('Failed to send reply');
+      }
+    }
+
+    loadTicket();
+  </script>
+</body>
+</html>
